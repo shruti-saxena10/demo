@@ -1,100 +1,109 @@
-package com.alight.cc.startanywhere.exception;
+@Test
+void testCheckValidationBeforeAsyncC_StatusZero_HitCountLessThanLimit() {
+    CreateGroupsResponse response = new CreateGroupsResponse();
+    RequestHeader header = new RequestHeader();
+    header.setCorrelationId("corr123");
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+    ClientOnboardingRequestTrackEntity trackEntity = new ClientOnboardingRequestTrackEntity();
+    trackEntity.setStatus(0);
+    trackEntity.setHitCount(1);
 
-import java.io.IOException;
+    when(configBean.getHitCount()).thenReturn(3);
+    when(trackRepo.findByCorrelationIdAndClientId(any(), any())).thenReturn(trackEntity);
 
-import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
+    try (MockedStatic<StartAnywhereSecurityUtil> secUtil = mockStatic(StartAnywhereSecurityUtil.class);
+         MockedStatic<RequestHeader> reqHeader = mockStatic(RequestHeader.class);
+         MockedStatic<StartAnywhereUtil> util = mockStatic(StartAnywhereUtil.class)) {
 
-import com.alight.cc.startanywhere.model.BaseResponse;
-import com.alight.cc.startanywhere.util.StartAnyWhereConstants;
-import com.fasterxml.jackson.databind.JsonMappingException;
+        secUtil.when(() -> StartAnywhereSecurityUtil.unCleanIt(any())).thenReturn("{}");
+        reqHeader.when(() -> RequestHeader.parse(any())).thenReturn(header);
+        util.when(() -> StartAnywhereUtil.buildResponse(any(), any(), any(), any(), any(), any(), any(), any()))
+            .thenReturn(response);
 
-class GlobalExceptionHandlerHandleJsonParseErrorTest {
+        CreateGroupsResponse result = service.checkValidationBeforeAsyncC("token", "{}", "client123", "ClientX");
 
-    private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
-
-    /**
-     * ✅ Test case: When JsonMappingException contains a field path,
-     * ensure the field name is included in the error message.
-     */
-    @Test
-    void handleJsonParseError_withFieldName_returnsSpecificMessage() {
-        // Arrange
-        JsonMappingException jme = JsonMappingException.fromUnexpectedIOE(new IOException("Test"));
-        jme.prependPath(new JsonMappingException.Reference(Object.class, "age")); // simulate field path
-        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error", jme);
-
-        // Act
-        ResponseEntity<Object> response = handler.handleJsonParseError(ex);
-
-        // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        BaseResponse body = (BaseResponse) response.getBody();
-        assertEquals(StartAnyWhereConstants.HTTP_STATUS_BAD_REQUEST, body.getResponseCode());
-        assertTrue(body.getResponseDescription().contains("Invalid value for field 'age'"));
+        assertNotNull(result);
+        verify(trackRepo).save(trackEntity); // ✅ hitCount should be incremented
+        assertEquals(2, trackEntity.getHitCount()); // ✅ check side effect
     }
+}
 
-    /**
-     * ✅ Test case: When JsonMappingException exists but has no path,
-     * ensure the generic invalid input message is used.
-     */
-    @Test
-    void handleJsonParseError_withoutFieldName_returnsGenericMessage() {
-        // Arrange
-        JsonMappingException jme = JsonMappingException.fromUnexpectedIOE(new IOException("Test"));
-        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error", jme);
+@Test
+void testCheckValidationBeforeAsyncC_StatusZero_HitCountExceedsLimit() {
+    CreateGroupsResponse response = new CreateGroupsResponse();
+    RequestHeader header = new RequestHeader();
+    header.setCorrelationId("corr123");
 
-        // Act
-        ResponseEntity<Object> response = handler.handleJsonParseError(ex);
+    ClientOnboardingRequestTrackEntity trackEntity = new ClientOnboardingRequestTrackEntity();
+    trackEntity.setStatus(0);
+    trackEntity.setHitCount(3); // equal to limit → should trigger rate limit response
 
-        // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        BaseResponse body = (BaseResponse) response.getBody();
-        assertEquals(StartAnyWhereConstants.HTTP_STATUS_BAD_REQUEST, body.getResponseCode());
-        assertEquals("Invalid input provided. Please check your request payload.", body.getResponseDescription());
+    when(configBean.getHitCount()).thenReturn(3);
+    when(trackRepo.findByCorrelationIdAndClientId(any(), any())).thenReturn(trackEntity);
+
+    try (MockedStatic<StartAnywhereSecurityUtil> secUtil = mockStatic(StartAnywhereSecurityUtil.class);
+         MockedStatic<RequestHeader> reqHeader = mockStatic(RequestHeader.class);
+         MockedStatic<StartAnywhereUtil> util = mockStatic(StartAnywhereUtil.class)) {
+
+        secUtil.when(() -> StartAnywhereSecurityUtil.unCleanIt(any())).thenReturn("{}");
+        reqHeader.when(() -> RequestHeader.parse(any())).thenReturn(header);
+        util.when(() -> StartAnywhereUtil.buildResponse(any(), any(), any(), any(), any(), any(), any(), any()))
+            .thenReturn(response);
+
+        CreateGroupsResponse result = service.checkValidationBeforeAsyncC("token", "{}", "client123", "ClientX");
+
+        assertNotNull(result);
+        verify(trackRepo, never()).save(any()); // ✅ should NOT increment/save when limit exceeded
     }
+}
 
-    /**
-     * ✅ Test case: When cause is not a JsonMappingException,
-     * ensure it falls back to the generic error message.
-     */
-    @Test
-    void handleJsonParseError_withNonJsonMappingCause_returnsGenericMessage() {
-        // Arrange
-        Throwable cause = new RuntimeException("Some other parsing exception");
-        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error", cause);
+@Test
+void testCheckValidationBeforeAsyncC_StatusNotZero_ReturnsCompletedResponse() {
+    CreateGroupsResponse response = new CreateGroupsResponse();
+    RequestHeader header = new RequestHeader();
+    header.setCorrelationId("corr123");
 
-        // Act
-        ResponseEntity<Object> response = handler.handleJsonParseError(ex);
+    ClientOnboardingRequestTrackEntity trackEntity = new ClientOnboardingRequestTrackEntity();
+    trackEntity.setStatus(1); // completed
 
-        // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        BaseResponse body = (BaseResponse) response.getBody();
-        assertEquals(StartAnyWhereConstants.HTTP_STATUS_BAD_REQUEST, body.getResponseCode());
-        assertEquals("Invalid input provided. Please check your request payload.", body.getResponseDescription());
+    when(trackRepo.findByCorrelationIdAndClientId(any(), any())).thenReturn(trackEntity);
+
+    try (MockedStatic<StartAnywhereSecurityUtil> secUtil = mockStatic(StartAnywhereSecurityUtil.class);
+         MockedStatic<RequestHeader> reqHeader = mockStatic(RequestHeader.class);
+         MockedStatic<StartAnywhereUtil> util = mockStatic(StartAnywhereUtil.class)) {
+
+        secUtil.when(() -> StartAnywhereSecurityUtil.unCleanIt(any())).thenReturn("{}");
+        reqHeader.when(() -> RequestHeader.parse(any())).thenReturn(header);
+        util.when(() -> StartAnywhereUtil.buildResponse(any(), any(), any(), any(), any(), any(), any(), any()))
+            .thenReturn(response);
+
+        CreateGroupsResponse result = service.checkValidationBeforeAsyncC("token", "{}", "client123", "ClientX");
+
+        assertNotNull(result);
+        verify(trackRepo, never()).save(any());
     }
+}
 
-    /**
-     * ✅ Test case: When there is no cause at all,
-     * ensure the generic invalid input message is still returned.
-     */
-    @Test
-    void handleJsonParseError_withoutCause_returnsGenericMessage() {
-        // Arrange
-        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error", (Throwable) null);
+@Test
+void testCheckValidationBeforeAsyncC_NoTrackEntityFound() {
+    CreateGroupsResponse response = new CreateGroupsResponse();
+    RequestHeader header = new RequestHeader();
+    header.setCorrelationId("corr123");
 
-        // Act
-        ResponseEntity<Object> response = handler.handleJsonParseError(ex);
+    when(trackRepo.findByCorrelationIdAndClientId(any(), any())).thenReturn(null);
 
-        // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        BaseResponse body = (BaseResponse) response.getBody();
-        assertEquals(StartAnyWhereConstants.HTTP_STATUS_BAD_REQUEST, body.getResponseCode());
-        assertEquals("Invalid input provided. Please check your request payload.", body.getResponseDescription());
+    try (MockedStatic<StartAnywhereSecurityUtil> secUtil = mockStatic(StartAnywhereSecurityUtil.class);
+         MockedStatic<RequestHeader> reqHeader = mockStatic(RequestHeader.class);
+         MockedStatic<StartAnywhereUtil> util = mockStatic(StartAnywhereUtil.class)) {
+
+        secUtil.when(() -> StartAnywhereSecurityUtil.unCleanIt(any())).thenReturn("{}");
+        reqHeader.when(() -> RequestHeader.parse(any())).thenReturn(header);
+        util.when(() -> StartAnywhereUtil.buildResponse(any(), any(), any(), any(), any(), any(), any(), any()))
+            .thenReturn(response);
+
+        CreateGroupsResponse result = service.checkValidationBeforeAsyncC("token", "{}", "client123", "ClientX");
+
+        assertNotNull(result);
+        verify(trackRepo, never()).save(any());
     }
 }
