@@ -4,26 +4,43 @@ import static org.mockito.Mockito.*;
 import java.util.*;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
-class FailedEntitlementTest {
+class FailedEntitlementProcessorTest {
+
+    @Mock
+    private Map<String, String> validFields;
+
+    @InjectMocks
+    private FailedEntitlementProcessor processor; // Replace with your actual class name
+
+    FailedEntitlementProcessorTest() {
+        MockitoAnnotations.openMocks(this);
+    }
 
     @Test
-    void testFailedEntitlementPopulation() {
+    void testPopulateFailedEntitlement_withValidValues() {
         // Arrange
-        Map<String, String> validFields = new HashMap<>();
-        validFields.put("description", "Sample Entitlement");
-
+        Object jsonObject = mock(Object.class); // Mock jsonObject if needed
         Map<String, String> presentValues = new HashMap<>();
         presentValues.put("msg", "Invalid entitlement value");
         presentValues.put("errorCode", "E400");
+
+        when(validFields.get("description")).thenReturn("Sample Entitlement");
+
+        FailedEntitlementProcessor spyProcessor = spy(processor);
+        doReturn(presentValues).when(spyProcessor).getPresentValues(jsonObject);
 
         FailedEntitlement failedEntitlement = new FailedEntitlement();
         List<FailedEntitlement> failedEntitlementsList = new ArrayList<>();
 
         // Act
+        Map<String, String> mockValues = spyProcessor.getPresentValues(jsonObject);
         failedEntitlement.setEntitlementName(validFields.get("description"));
-        failedEntitlement.setErrorMessage(presentValues.get("msg"));
-        failedEntitlement.setErrorCode(presentValues.get("errorCode"));
+        failedEntitlement.setErrorMessage(mockValues.get("msg"));
+        failedEntitlement.setErrorCode(mockValues.get("errorCode"));
         failedEntitlementsList.add(failedEntitlement);
 
         // Assert
@@ -32,5 +49,38 @@ class FailedEntitlementTest {
         assertEquals("Sample Entitlement", result.getEntitlementName());
         assertEquals("Invalid entitlement value", result.getErrorMessage());
         assertEquals("E400", result.getErrorCode());
+
+        verify(spyProcessor, times(1)).getPresentValues(jsonObject);
+        verify(validFields, times(1)).get("description");
+    }
+
+    @Test
+    void testPopulateFailedEntitlement_withNullValues() {
+        // Arrange
+        Object jsonObject = mock(Object.class);
+        when(validFields.get("description")).thenReturn(null);
+
+        FailedEntitlementProcessor spyProcessor = spy(processor);
+        doReturn(Collections.emptyMap()).when(spyProcessor).getPresentValues(jsonObject);
+
+        FailedEntitlement failedEntitlement = new FailedEntitlement();
+        List<FailedEntitlement> failedEntitlementsList = new ArrayList<>();
+
+        // Act
+        Map<String, String> mockValues = spyProcessor.getPresentValues(jsonObject);
+        failedEntitlement.setEntitlementName(validFields.get("description"));
+        failedEntitlement.setErrorMessage(mockValues.get("msg"));  // Will be null
+        failedEntitlement.setErrorCode(mockValues.get("errorCode")); // Will be null
+        failedEntitlementsList.add(failedEntitlement);
+
+        // Assert
+        assertEquals(1, failedEntitlementsList.size());
+        FailedEntitlement result = failedEntitlementsList.get(0);
+        assertEquals(null, result.getEntitlementName());
+        assertEquals(null, result.getErrorMessage());
+        assertEquals(null, result.getErrorCode());
+
+        verify(spyProcessor, times(1)).getPresentValues(jsonObject);
+        verify(validFields, times(1)).get("description");
     }
 }
