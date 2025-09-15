@@ -1,0 +1,36 @@
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.*;
+
+import java.util.*;
+
+import org.junit.jupiter.api.Test;
+
+class FailedEntitlementTest {
+
+    @Test
+    void testFailedEntitlementPopulation() {
+        // Arrange
+        Map<String, String> validFields = new HashMap<>();
+        validFields.put("description", "Sample Entitlement");
+
+        Map<String, String> presentValues = new HashMap<>();
+        presentValues.put("msg", "Invalid entitlement value");
+        presentValues.put("errorCode", "E400");
+
+        FailedEntitlement failedEntitlement = new FailedEntitlement();
+        List<FailedEntitlement> failedEntitlementsList = new ArrayList<>();
+
+        // Act
+        failedEntitlement.setEntitlementName(validFields.get("description"));
+        failedEntitlement.setErrorMessage(presentValues.get("msg"));
+        failedEntitlement.setErrorCode(presentValues.get("errorCode"));
+        failedEntitlementsList.add(failedEntitlement);
+
+        // Assert
+        assertEquals(1, failedEntitlementsList.size());
+        FailedEntitlement result = failedEntitlementsList.get(0);
+        assertEquals("Sample Entitlement", result.getEntitlementName());
+        assertEquals("Invalid entitlement value", result.getErrorMessage());
+        assertEquals("E400", result.getErrorCode());
+    }
+}
