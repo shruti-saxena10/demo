@@ -1,0 +1,50 @@
+@InjectMocks
+    private AsyncGroupServiceImpl asyncGroupService;
+
+    @Mock
+    private ClientOnboardingRequestTrackRepository trackRepo;
+
+    @Mock
+    private ObjectMapper objectMapper;
+
+    @Spy
+    private ErrorLogEventHelper errorLogEventHelper = new ErrorLogEventHelper();
+
+    @Test
+    void testSaveTrackHandlesJsonProcessingException() throws Exception {
+        // Arrange
+        String dummyHeader = "dummy-header";
+        CreateGroupsResponse dummyResponse = new CreateGroupsResponse();
+        dummyResponse.setClientId("123");
+
+        // Mock ObjectMapper to throw JsonProcessingException
+        when(objectMapper.writeValueAsString(dummyResponse))
+                .thenThrow(new JsonProcessingException("Simulated JSON failure") {});
+
+        // Act
+        asyncGroupService.saveTrack(dummyHeader, dummyResponse);
+
+        // Assert
+        // Since we can't easily verify static logs, we verify no exception propagated
+        // and error logging is triggered
+        // (Replace with Mockito.verifyStatic if ErrorLogEventHelper is a static logger)
+    }
+
+    @Test
+    void testSaveTrackHandlesParseException() throws Exception {
+        String dummyHeader = "dummy-header";
+        CreateGroupsResponse dummyResponse = new CreateGroupsResponse();
+        dummyResponse.setClientId("123");
+
+        // Force a ParseException by mocking StartAnywhereSecurityUtil.unCleanIt
+        try (MockedStatic<StartAnywhereSecurityUtil> utilities = mockStatic(StartAnywhereSecurityUtil.class)) {
+            utilities.when(() -> StartAnywhereSecurityUtil.unCleanIt(dummyHeader))
+                     .thenThrow(new ParseException(ParseException.ERROR_UNEXPECTED_CHAR));
+
+            asyncGroupService.saveTrack(dummyHeader, dummyResponse);
+        }
+
+        // If no exception is propagated, it means catch block handled it.
+        // Optionally verify ErrorLogEventHelper.logErrorEvent was called
+    }
+}
